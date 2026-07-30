@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bulk Recipient CSV Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 880px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #1e293b;
+    background: #f8fafc;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.subtitle { color: #64748b; margin-top: 0; font-size: 14px; }
+  .card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    margin-bottom: 20px;
+  }
+  .drop-zone {
+    border: 2px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    background: #f8fafc;
+    transition: all 0.15s ease;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: #2563eb;
+    background: #eff6ff;
+  }
+  .drop-zone .icon { font-size: 30px; margin-bottom: 6px; }
+  .drop-zone .main-text { font-weight: 600; font-size: 15px; }
+  .drop-zone .sub-text { font-size: 12px; color: #64748b; margin-top: 4px; }
+  .file-name {
+    margin-top: 12px;
+    font-size: 13px;
+    color: #334155;
+    font-weight: 500;
+  }
+  .status {
+    margin-top: 14px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .status.ok { color: #059669; }
+  .status.err { color: #dc2626; }
+  .sheet-block {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin-top: 16px;
+    background: #fafbfc;
+  }
+  .sheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .sheet-title { font-weight: 700; font-size: 15px; color: #0f172a; }
+  .sheet-count { font-size: 12px; color: #64748b; font-weight: 500; }
+  .preview-box {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    max-height: 130px;
+    overflow-y: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+    color: #475569;
+    line-height: 1.6;
+  }
+  .btn {
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  .btn:hover { background: #1d4ed8; }
+  .btn.secondary {
+    background: #0f172a;
+    margin-left: 8px;
+  }
+  .btn.secondary:hover { background: #1e293b; }
+  .empty-note { color: #94a3b8; font-style: italic; font-size: 13px; margin-top: 8px; }
+  .summary-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+  }
+  #resultsContainer { margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<h1>Bulk Recipient CSV Generator</h1>
+<p class="subtitle">Drag in an Excel workbook to pull Name (Column B) and Email (Column D) from every sheet and export a DocuSign-style Bulk Recipient CSV per sheet.</p>
+
+<div class="card">
+  <div class="drop-zone" id="dropZone">
+    <div class="icon">📄</div>
+    <div class="main-text">Drag &amp; drop a file here, or click to browse</div>
+    <div class="sub-text">Accepts .xlsx / .xls — skips row 1 headers on each sheet</div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none;" />
+  </div>
+  <div class="file-name" id="fileName"></div>
+  <div class="status" id="status"></div>
+</div>
+
+<div id="resultsContainer"></div>
+
+<script>
+(function () {
+  // ---- Template header definitions (matches Bulk Recipient CSV format) ----
+  const MAX_RECIPIENTS = 81;
+
+  const NAME_EMAIL_HEADERS = [];
+  for (let i = 1; i <= MAX_RECIPIENTS; i++) {
+    const n = String(i).padStart(2, '0');
+    NAME_EMAIL_HEADERS.push(`${n}::Name`, `${n}::Email`);
+  }
+
+  const TEXT_FIELD_UUIDS = [
+    "9fbd8c43-26de-4901-9e43-e3617aff7207","aabfbae3-cfea-4552-839d-71ad2a05d513",
+    "c97b7ed9-9d83-479f-ad68-4d78db2e4b5b","38783f89-e0f7-47a2-bcd7-2f3dd9cfbe2e",
+    "1ef40cfb-9857-4cb0-bb71-62c6e3727385","b1842697-6672-45cf-82e3-830b04f9c9bd",
+    "b7ad9c40-8d06-44e1-b7f9-db11bcdafe4a","ec471440-4ab4-4c8b-b2ce-3657cb79dfb9",
+    "c4aec380-75ce-4a95-80d8-48d493261c6d","5ab46fd8-dfa4-4245-b91c-84093e7f86ac",
+    "3bd72733-a907-4866-8f89-0834c9a2f4ba","e12223da-9ea6-475e-bb6e-b04188c2e5d6",
+    "d1762f7d-a914-4e82-a817-7815916e67ef","87bed609-d52c-45a6-90cf-bb8c2c3417bc",
+    "79212fe3-1289-4c16-8785-4a0106470e47","c62dff81-fb12-4049-a7f0-65ab7b646d58",
+    "cb22c94b-af79-4d3c-b1a6-ade3b77a9bc4","19e7e137-902e-42d5-8337-30715017fed9",
+    "d1865a5c-5d9e-4283-b805-7f21bc00db6c","208730d4-f5c4-4a12-b595-94865ec5eb0d",
+    "f1b8c386-1f52-4a86-a493-1bba35d5a909","3c714f41-4c56-4fe2-a6ce-7c1773a15eaf",
+    "363cfcd3-b0d2-4d32-beff-00f2f5a2bf53","c5426a84-0dc2-4b19-9cbd-a3d4ae93d860",
+    "16be5613-55e5-41f1-af4a-507aa27c6753","7a932bda-b1fc-4d6c-95fd-4b607b5065b9",
+    "6dc67d96-9c06-4063-b4be-efe27f882a47","464888e4-daaf-415f-adcb-2ceffe2797f0",
+    "72d1e79c-f409-41a0-afa1-6f091102cc40","94348766-5479-4186-b54e-5e8c08776e9c",
+    "3019ce5b-f60f-4b97-966c-8de7213e677e","9ae9684c-f360-4073-9f0f-d69cc6299d04",
+    "776f2847-5718-4747-9f5e-72913c22625b","8d87979a-07be-4f17-9a40-d74dae757180",
+    "02922690-225e-49d0-adf8-4fcf1b7a5de8","029807cf-0fc8-462e-abcb-df121a244ec4",
+    "c394f894-279c-4710-b8e6-52a8ee56e9dd","38d9600c-846c-429b-80e9-eaa9a2034f08",
+    "e9aafe09-cf4d-4f24-bfd9-e91f50da5fa0","b9f8bf68-42c4-4495-a763-df2fd73ac4fc",
+    "7f14a9c5-2529-49fb-a6d9-9dd01b24fbb9","a6cae589-825a-4cd8-ae83-fb5b055a1b59",
+    "0ed82807-5889-4fa8-85fb-df6274c38664","e24383a8-5434-4956-950e-85bfc5ec276f",
+    "8a0e69e6-13c0-45dc-bfb1-86a44c8f0065","24d5f4b7-efad-4c9d-b9d8-feebac4b9442",
+    "ebe4ec32-f005-4964-823f-75b579fad17a","92bd9424-5bf6-48d6-ad5b-4a0bf03b17e4",
+    "6cc4fc53-12c1-4145-8e3c-af43da916be4","8106fd46-7df3-4d04-bcbf-03893d36d175",
+    "c922b9b5-69fa-4689-80ba-b0cdb100abbe","8bdc58c7-590d-43fb-b043-6b5d4938c109",
+    "42849d0a-fdf8-49c3-9673-94fbe67eb7c6","82ad313c-7a26-41c0-837d-9dcf085938c0",
+    "386d6d9f-c99e-471e-85a5-6ecacfa65949","fcbd1206-b1ce-4cd6-9731-1b65200615c6",
+    "2d36f7ab-fb5a-4a38-a9dc-11503dce01bb","ae15b2c6-ea10-42d4-981d-e6521a932578",
+    "2041fd62-590d-44b2-8e39-4f30036b4324","f47fa2b1-4ec7-4c54-8973-be919e91db05",
+    "65ab601d-0f04-4aab-a2d9-48b1c080161d","422e0748-d5f3-437f-a7ad-fb4dc21b9608",
+    "47364965-67f5-4fd2-95ef-7f2eb415c2ee","68c12b91-778e-47cb-8c67-2f6e3f6b0a56",
+    "ee90215f-93f9-4fbf-9d0e-a59a8d3d8c38","ccc2c366-8f86-4bf7-87ab-b3ab4c05ec5d",
+    "88132f12-04e5-40f7-8ef4-f52c1dc8f045","9ed5e3b5-ad87-4f0e-bfec-63a8d6f39ce5",
+    "b00c3dd6-f633-4a29-9aab-56c7993a79c4","be9f5b6e-35c3-4eee-bf3e-6582be093427",
+    "970049e6-70c0-4eab-a396-36d13e8286f1","d390864b-6634-41af-870f-40d553f071d9",
+    "2e1aceb8-3cc1-4de7-9903-64527fdf52e4","d9ae29d9-f88a-4d8b-a761-8dfb9612a9d2",
+    "bde20b9f-64aa-4e6f-9ba4-46862e3e4f6d","382b393a-9323-4c81-b517-2402fe79f1ff",
+    "9bac8da1-4006-408c-aa00-618df11775d7","64bc4de9-28b1-40cd-a818-0dfa32e3e51f",
+    "fec6f41e-552d-4e22-9697-b5f9365fe5f8","da424a40-e456-4b68-8e72-a6c89ba4516b",
+    "b3cda3ae-de25-4d7b-9150-cbce404b6188"
+  ];
+
+  const TEXT_FIELD_HEADERS = TEXT_FIELD_UUIDS.map((uuid, idx) => {
+    const n = String(idx + 1).padStart(2, '0');
+    return `${n}::Text ${uuid}`;
+  });
+
+  // ---- DOM refs ----
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const fileNameEl = document.getElementById('fileName');
+  const statusEl = document.getElementById('status');
+  const resultsContainer = document.getElementById('resultsContainer');
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) processFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length) processFile(e.target.files[0]);
+  });
+
+  function escapeCSVField(field) {
+    if (field === null || field === undefined) return '';
+    let str = String(field).trim();
+    if (str.includes('"') || str.includes(',') || str.includes('\n')) {
+      str = '"' + str.replace(/"/g, '""') + '"';
+    }
+    return str;
+  }
+
+  function buildCSV(nameEmailPairs) {
+    const count = Math.min(nameEmailPairs.length, MAX_RECIPIENTS);
+    const activeNameEmailHeaders = NAME_EMAIL_HEADERS.slice(0, count * 2);
+    const activeTextFieldHeaders = TEXT_FIELD_HEADERS.slice(0, count);
+    const headers = activeNameEmailHeaders.concat(activeTextFieldHeaders);
+
+    const row = new Array(headers.length).fill('');
+    for (let i = 0; i < count; i++) {
+      row[i * 2] = nameEmailPairs[i].name;
+      row[i * 2 + 1] = nameEmailPairs[i].email;
+      row[count * 2 + i] = nameEmailPairs[i].text; // Column C value
+    }
+
+    const headerLine = headers.map(escapeCSVField).join(',');
+    const rowLine = row.map(escapeCSVField).join(',');
+    return headerLine + '\n' + rowLine;
+  }
+
+  function downloadCSV(csvContent, filename) {
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function sanitizeFilename(name) {
+    return name.replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+
+  function processFile(file) {
+    fileNameEl.innerText = `File: ${file.name}`;
+    statusEl.className = 'status';
+    statusEl.innerText = 'Processing all sheets…';
+    resultsContainer.innerHTML = '';
+
+    const reader = new FileReader();
+
+    reader.onload = function (e) {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetResults = [];
+
+        workbook.SheetNames.forEach((sheetName) => {
+          const worksheet = workbook.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+          const nameEmailPairs = [];
+          // Row 1 (index 0) is the header row — skip it.
+          const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
+          const HAS_LETTER_OR_DIGIT = /[a-zA-Z0-9]/;
+
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row) continue;
+            const name = row[1] !== undefined ? String(row[1]).trim() : '';   // Column B
+            const text = row[2] !== undefined ? String(row[2]).trim() : '';   // Column C
+            const email = row[3] !== undefined ? String(row[3]).trim() : '';  // Column D
+
+            // A row only counts as a real recipient if it has an actual name
+            // or a properly-formed email. This filters out leftover
+            // formulas/formatting below the real data (e.g. a fill-down
+            // formula like =B2&"@domain.org" that still evaluates to a
+            // stray "@domain.org" on blank rows), which would otherwise
+            // get counted and inflate the header count past your real list.
+            const hasRealName = name !== '' && HAS_LETTER_OR_DIGIT.test(name);
+            const hasRealEmail = email !== '' && EMAIL_PATTERN.test(email);
+
+            if (hasRealName || hasRealEmail) {
+              nameEmailPairs.push({ name, email, text });
+            }
+          }
+
+          let csvContent = null;
+          let truncated = false;
+          if (nameEmailPairs.length > 0) {
+            truncated = nameEmailPairs.length > MAX_RECIPIENTS;
+            csvContent = buildCSV(nameEmailPairs);
+          }
+
+          sheetResults.push({ sheetName, nameEmailPairs, csvContent, truncated });
+          renderSheetBlock(sheetName, nameEmailPairs, csvContent, truncated);
+        });
+
+        const totalRecipients = sheetResults.reduce((sum, s) => sum + s.nameEmailPairs.length, 0);
+        const sheetsWithData = sheetResults.filter(s => s.csvContent).length;
+
+        if (sheetsWithData > 1) {
+          renderDownloadAllButton(sheetResults);
+        }
+
+        statusEl.className = 'status ok';
+        statusEl.innerText = `Done — processed ${workbook.SheetNames.length} sheet(s), found ${totalRecipients} recipient(s).`;
+
+      } catch (err) {
+        console.error(err);
+        statusEl.className = 'status err';
+        statusEl.innerText = 'Error processing file. Please make sure it is a valid Excel workbook.';
+      }
+    };
+
+    reader.onerror = function () {
+      statusEl.className = 'status err';
+      statusEl.innerText = 'Could not read the file.';
+    };
+
+    reader.readAsArrayBuffer(file);
+  }
+
+  function renderSheetBlock(sheetName, nameEmailPairs, csvContent, truncated) {
+    const block = document.createElement('div');
+    block.className = 'sheet-block';
+
+    const header = document.createElement('div');
+    header.className = 'sheet-header';
+
+    const title = document.createElement('div');
+    title.className = 'sheet-title';
+    title.innerText = sheetName;
+    header.appendChild(title);
+
+    const count = document.createElement('div');
+    count.className = 'sheet-count';
+    count.innerText = `${nameEmailPairs.length} recipient${nameEmailPairs.length === 1 ? '' : 's'}`;
+    header.appendChild(count);
+
+    block.appendChild(header);
+
+    if (nameEmailPairs.length > 0) {
+      const preview = document.createElement('div');
+      preview.className = 'preview-box';
+      preview.innerText = nameEmailPairs
+        .map((p, idx) => `${idx + 1}. ${p.name || '(no name)'} <${p.email || 'no email'}>${p.text ? ` — ${p.text}` : ''}`)
+        .join('\n');
+      block.appendChild(preview);
+
+      if (truncated) {
+        const warn = document.createElement('div');
+        warn.className = 'empty-note';
+        warn.innerText = `Note: only the first ${MAX_RECIPIENTS} recipients were included (template limit).`;
+        block.appendChild(warn);
+      }
+
+      const downloadBtn = document.createElement('button');
+      downloadBtn.className = 'btn';
+      downloadBtn.innerText = `Download CSV — ${sheetName}`;
+      downloadBtn.addEventListener('click', () => {
+        downloadCSV(csvContent, `Bulk_Recipient_${sanitizeFilename(sheetName)}.csv`);
+      });
+      block.appendChild(downloadBtn);
+    } else {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.className = 'empty-note';
+      emptyMsg.innerText = 'No data found in Column B or D below row 1.';
+      block.appendChild(emptyMsg);
+    }
+
+    resultsContainer.appendChild(block);
+  }
+
+  function renderDownloadAllButton(sheetResults) {
+    const bar = document.createElement('div');
+    bar.className = 'summary-bar';
+
+    const btn = document.createElement('button');
+    btn.className = 'btn secondary';
+    btn.innerText = 'Download All CSVs';
+    btn.addEventListener('click', () => {
+      sheetResults.forEach(s => {
+        if (s.csvContent) {
+          downloadCSV(s.csvContent, `Bulk_Recipient_${sanitizeFilename(s.sheetName)}.csv`);
+        }
+      });
+    });
+
+    bar.appendChild(btn);
+    resultsContainer.appendChild(bar);
+  }
+})();
+</script>
+</body>
+</html>

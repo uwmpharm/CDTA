@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WA Credential Lookup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#152232;
+    --ink-soft:#4a5c70;
+    --paper:#f3f6f8;
+    --panel:#ffffff;
+    --line:#d8e0e6;
+    --slate:#2e5266;
+    --slate-deep:#1c3a4b;
+    --teal:#1b7a6b;
+    --teal-bg:#e4f4f0;
+    --amber:#a8641b;
+    --amber-bg:#fdf1e2;
+    --red:#a8331f;
+    --red-bg:#fbe9e6;
+    --grey-bg:#eef1f3;
+    --focus:#3d7ab5;
+    --radius:8px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'IBM Plex Sans',system-ui,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size:28px 28px;
+    background-position:-1px -1px;
+    min-height:100vh;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:36px 24px 80px;}
+
+  header.top{
+    display:flex;justify-content:space-between;align-items:flex-end;
+    border-bottom:2px solid var(--slate-deep);
+    padding-bottom:16px;margin-bottom:28px;flex-wrap:wrap;gap:12px;
+  }
+  header.top .id-block{display:flex;align-items:baseline;gap:14px;}
+  header.top h1{
+    font-size:22px;margin:0;letter-spacing:0.01em;font-weight:700;color:var(--slate-deep);
+  }
+  header.top .tag{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);
+    background:var(--grey-bg);border:1px solid var(--line);border-radius:4px;
+    padding:3px 8px;letter-spacing:0.03em;
+  }
+  header.top .source{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);text-align:right;
+  }
+  header.top .source a{color:var(--slate);}
+
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px 22px;margin-bottom:20px;
+    box-shadow:0 1px 0 rgba(21,34,50,0.03);
+  }
+  .panel h2{
+    font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-soft);
+    margin:0 0 16px;font-weight:600;display:flex;align-items:center;gap:8px;
+  }
+  .panel h2 .num{
+    font-family:'IBM Plex Mono',monospace;color:var(--slate);background:var(--grey-bg);
+    border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;
+    font-size:11px;
+  }
+
+  .config-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;}
+  @media (max-width:820px){.config-grid{grid-template-columns:1fr;}}
+  .field label{
+    display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;
+  }
+  .field .hint{font-size:11px;color:var(--ink-soft);margin-top:5px;line-height:1.4;}
+  select, input[type=text], input[type=password]{
+    width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;
+    font-family:'IBM Plex Sans',sans-serif;font-size:13.5px;background:#fff;color:var(--ink);
+  }
+  select:focus, input:focus{outline:2px solid var(--focus);outline-offset:1px;}
+
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    background:var(--slate-deep);color:#fff;border:none;border-radius:6px;
+    padding:10px 18px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;
+    transition:background .15s ease;
+  }
+  .btn:hover{background:var(--slate);}
+  .btn:disabled{background:#b7c0c8;cursor:not-allowed;}
+  .btn.secondary{background:#fff;color:var(--slate-deep);border:1px solid var(--slate-deep);}
+  .btn.secondary:hover{background:var(--grey-bg);}
+  .btn.wide{width:100%;justify-content:center;padding:13px 18px;font-size:14px;}
+
+  .dropzone{
+    border:2px dashed var(--line);border-radius:var(--radius);
+    padding:34px 20px;text-align:center;cursor:pointer;background:#fbfcfd;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .dropzone.drag{border-color:var(--slate);background:var(--teal-bg);}
+  .dropzone.has-file{border-style:solid;border-color:var(--teal);background:var(--teal-bg);}
+  .dropzone .dz-icon{font-size:26px;margin-bottom:8px;}
+  .dropzone .dz-main{font-size:14px;font-weight:600;color:var(--ink);}
+  .dropzone .dz-sub{font-size:12px;color:var(--ink-soft);margin-top:4px;}
+  .dropzone .dz-file{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--teal);margin-top:8px;}
+
+  .row-between{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+
+  .progress-outer{
+    height:8px;background:var(--grey-bg);border-radius:4px;overflow:hidden;margin:14px 0 8px;
+  }
+  .progress-inner{height:100%;width:0%;background:var(--teal);transition:width .2s ease;}
+  .progress-label{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-soft);}
+
+  .summary-strip{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .chip{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;padding:6px 12px;border-radius:20px;
+    border:1px solid var(--line);background:#fff;color:var(--ink-soft);font-weight:500;
+  }
+  .chip b{color:var(--ink);font-weight:600;}
+  .chip.matched{border-color:var(--teal);color:var(--teal);background:var(--teal-bg);}
+  .chip.multiple{border-color:var(--amber);color:var(--amber);background:var(--amber-bg);}
+  .chip.none{border-color:var(--ink-soft);color:var(--ink-soft);background:var(--grey-bg);}
+  .chip.error{border-color:var(--red);color:var(--red);background:var(--red-bg);}
+
+  table{width:100%;border-collapse:collapse;font-size:12.8px;}
+  thead th{
+    text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.06em;
+    color:var(--ink-soft);border-bottom:2px solid var(--slate-deep);padding:8px 10px;
+    background:var(--panel);position:sticky;top:0;
+  }
+  tbody td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tbody tr:hover{background:#fafcfd;}
+  .credno{font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--slate-deep);}
+  .flag{
+    display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;
+    letter-spacing:0.03em;text-transform:uppercase;white-space:nowrap;
+  }
+  .flag.matched{background:var(--teal-bg);color:var(--teal);}
+  .flag.multiple{background:var(--amber-bg);color:var(--amber);}
+  .flag.none{background:var(--grey-bg);color:var(--ink-soft);}
+  .flag.error{background:var(--red-bg);color:var(--red);}
+  .grp{border-left:3px solid var(--amber);}
+  .status-active{color:var(--teal);font-weight:600;}
+  .status-other{color:var(--ink-soft);}
+  .muted{color:var(--ink-soft);}
+  .table-scroll{max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:var(--radius);}
+  .table-scroll table{margin:0;}
+
+  .footer-actions{display:flex;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap;gap:10px;}
+  .empty-state{padding:40px 20px;text-align:center;color:var(--ink-soft);font-size:13px;}
+  .disclaimer{
+    font-size:11.5px;color:var(--ink-soft);margin-top:10px;line-height:1.5;
+    border-top:1px dashed var(--line);padding-top:10px;
+  }
+  input[type=file]{display:none;}
+  .inline-note{font-size:11.5px;color:var(--ink-soft);margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="id-block">
+      <h1>WA Credential Lookup</h1>
+      <span class="tag">batch &middot; name-based</span>
+    </div>
+    <div class="source">Source: WA DOH Health Care Provider Credential Data<br>data.wa.gov &middot; dataset qxh8-f4bd</div>
+  </header>
+
+  <!-- STEP 1: CONFIG -->
+  <div class="panel">
+    <h2><span class="num">1</span>Search settings</h2>
+    <div class="config-grid">
+      <div class="field">
+        <label for="credType">Default credential type</label>
+        <select id="credType">
+          <option value="Pharmacist License">Pharmacist License</option>
+          <option value="Pharmacy Technician License">Pharmacy Technician License</option>
+          <option value="Pharmacy Assistant License">Pharmacy Assistant License</option>
+          <option value="Pharmacy Intern License">Pharmacy Intern License</option>
+          <option value="__custom__">Custom / other&hellip;</option>
+        </select>
+        <input type="text" id="credTypeCustom" placeholder="Exact credential type text" style="margin-top:8px;display:none;">
+        <div class="hint">Used for any row that doesn't specify its own "Credential Type" in the spreadsheet. A per-row value always overrides this.</div>
+      </div>
+      <div class="field">
+        <label for="appToken">Socrata app token <span class="muted">(optional)</span></label>
+        <input type="password" id="appToken" placeholder="Improves rate limits on large batches">
+        <div class="hint">Not required for small batches. Get a free one at data.wa.gov if you're processing hundreds of rows.</div>
+      </div>
+      <div class="field">
+        <label for="delayMs">Delay between requests</label>
+        <select id="delayMs">
+          <option value="150">150 ms (fast)</option>
+          <option value="300" selected>300 ms (recommended)</option>
+          <option value="600">600 ms (conservative)</option>
+        </select>
+        <div class="hint">Slows the batch to stay under the public API's rate limit.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: TEMPLATE -->
+  <div class="panel">
+    <h2><span class="num">2</span>Get the template</h2>
+    <div class="row-between">
+      <div style="font-size:13px;color:var(--ink-soft);max-width:640px;">
+        Download the blank workbook, fill in First Name / Last Name for each person (Birth Year and Credential Type are optional, per row), then upload it below.
+      </div>
+      <button class="btn secondary" id="downloadTemplate">&#8681; Download template (.xlsx)</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: UPLOAD -->
+  <div class="panel">
+    <h2><span class="num">3</span>Upload filled-in workbook</h2>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">&#128194;</div>
+      <div class="dz-main">Drag and drop your .xlsx file here, or click to browse</div>
+      <div class="dz-sub">Expected columns: First Name, Last Name, Birth Year (optional), Credential Type (optional)</div>
+      <div class="dz-file" id="dzFile"></div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <div class="inline-note" id="parseNote"></div>
+  </div>
+
+  <!-- STEP 4: RUN -->
+  <div class="panel">
+    <h2><span class="num">4</span>Run lookup</h2>
+    <button class="btn wide" id="runBtn" disabled>Run batch lookup</button>
+    <div class="progress-outer"><div class="progress-inner" id="progressBar"></div></div>
+    <div class="progress-label" id="progressLabel">Waiting for a file&hellip;</div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="panel" id="resultsPanel" style="display:none;">
+    <h2><span class="num">5</span>Results</h2>
+    <div class="summary-strip" id="summaryStrip"></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Input name</th>
+            <th>Flag</th>
+            <th>Credential #</th>
+            <th>Credential type</th>
+            <th>Status</th>
+            <th>Birth yr</th>
+            <th>Expires</th>
+            <th>Action taken</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+    <div class="footer-actions">
+      <div class="progress-label" id="resultCountLabel"></div>
+      <button class="btn" id="exportBtn">&#8681; Export results (.xlsx)</button>
+    </div>
+    <div class="disclaimer">
+      "Multiple matches" means more than one credential record shares the same first/last name (and birth year, if provided) &mdash; each is listed separately and flagged so you can confirm the right individual before relying on the credential number. Data is pulled live from the WA DOH public dataset each time you run a batch; verify anything used for a compliance decision directly against data.wa.gov.
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API_BASE = "https://data.wa.gov/resource/qxh8-f4bd.json";
+
+const credTypeSel = document.getElementById('credType');
+const credTypeCustom = document.getElementById('credTypeCustom');
+credTypeSel.addEventListener('change', () => {
+  credTypeCustom.style.display = credTypeSel.value === '__custom__' ? 'block' : 'none';
+});
+
+// ---------- Template download ----------
+document.getElementById('downloadTemplate').addEventListener('click', () => {
+  const headers = ['First Name', 'Last Name', 'Birth Year', 'Credential Type'];
+  const wsData = [headers];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols'] = [{wch:16},{wch:16},{wch:12},{wch:28}];
+
+  const instructions = [
+    ['WA Credential Lookup - Template Instructions'],
+    [''],
+    ['First Name', 'Required. Exact spelling as licensed, best effort.'],
+    ['Last Name', 'Required.'],
+    ['Birth Year', 'Optional. 4-digit year. Helps disambiguate common names. Leave blank if unknown.'],
+    ['Credential Type', 'Optional. Overrides the default credential type chosen in the app for this row only. Leave blank to use the app default (e.g. "Pharmacist License").'],
+    [''],
+    ['Notes'],
+    ['- Do not rename the header row.'],
+    ['- One person per row.'],
+    ['- Rows with multiple matching credential records will be flagged in the results, with every match listed.'],
+  ];
+  const wsI = XLSX.utils.aoa_to_sheet(instructions);
+  wsI['!cols'] = [{wch:20},{wch:70}];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Lookup Template');
+  XLSX.utils.book_append_sheet(wb, wsI, 'Instructions');
+  XLSX.writeFile(wb, 'credential_lookup_template.xlsx');
+});
+
+// ---------- Upload / parse ----------
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const dzFile = document.getElementById('dzFile');
+const parseNote = document.getElementById('parseNote');
+const runBtn = document.getElementById('runBtn');
+const progressLabel = document.getElementById('progressLabel');
+
+let parsedRows = [];
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+
+function normalizeHeader(h) {
+  return String(h || '').trim().toLowerCase().replace(/[^a-z]/g, '');
+}
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const wsName = wb.SheetNames.find(n => n.toLowerCase() !== 'instructions') || wb.SheetNames[0];
+      const ws = wb.Sheets[wsName];
+      const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      if (!json.length) {
+        parseNote.textContent = 'That sheet has no data rows.';
+        parseNote.style.color = 'var(--red)';
+        return;
+      }
+
+      // map headers flexibly
+      const sampleRow = json[0];
+      const keyMap = {};
+      Object.keys(sampleRow).forEach(k => {
+        const n = normalizeHeader(k);
+        if (n === 'firstname') keyMap.first = k;
+        else if (n === 'lastname') keyMap.last = k;
+        else if (n === 'birthyear') keyMap.birth = k;
+        else if (n === 'credentialtype') keyMap.cred = k;
+      });
+
+      if (!keyMap.first || !keyMap.last) {
+        parseNote.textContent = 'Could not find "First Name" and "Last Name" columns. Use the template headers.';
+        parseNote.style.color = 'var(--red)';
+        runBtn.disabled = true;
+        return;
+      }
+
+      parsedRows = json
+        .map(r => ({
+          first: String(r[keyMap.first] || '').trim(),
+          last: String(r[keyMap.last] || '').trim(),
+          birth: keyMap.birth ? String(r[keyMap.birth] || '').trim() : '',
+          cred: keyMap.cred ? String(r[keyMap.cred] || '').trim() : '',
+        }))
+        .filter(r => r.first && r.last);
+
+      if (!parsedRows.length) {
+        parseNote.textContent = 'No rows with both a first and last name were found.';
+        parseNote.style.color = 'var(--red)';
+        runBtn.disabled = true;
+        return;
+      }
+
+      dropzone.classList.add('has-file');
+      dzFile.textContent = `${file.name} — ${parsedRows.length} row${parsedRows.length === 1 ? '' : 's'} ready`;
+      parseNote.textContent = '';
+      runBtn.disabled = false;
+      progressLabel.textContent = `${parsedRows.length} row(s) loaded. Ready to run.`;
+    } catch (err) {
+      parseNote.textContent = 'Could not read that file — is it a valid .xlsx?';
+      parseNote.style.color = 'var(--red)';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ---------- Lookup ----------
+const progressBar = document.getElementById('progressBar');
+const resultsPanel = document.getElementById('resultsPanel');
+const resultsBody = document.getElementById('resultsBody');
+const summaryStrip = document.getElementById('summaryStrip');
+const resultCountLabel = document.getElementById('resultCountLabel');
+
+let flatResults = []; // for export
+
+function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+async function lookupOne(row, defaultCred, customCred, token) {
+  const credType = row.cred || (defaultCred === '__custom__' ? customCred : defaultCred);
+  const params = new URLSearchParams();
+  if (credType) params.set('credentialtype', credType);
+  params.set('firstname', row.first);
+  params.set('lastname', row.last);
+  if (row.birth) params.set('birthyear', row.birth);
+
+  const url = `${API_BASE}?${params.toString()}`;
+  const headers = {};
+  if (token) headers['X-App-Token'] = token;
+
+  const resp = await fetch(url, { headers });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
+runBtn.addEventListener('click', async () => {
+  runBtn.disabled = true;
+  resultsPanel.style.display = 'block';
+  resultsBody.innerHTML = '';
+  flatResults = [];
+
+  const defaultCred = credTypeSel.value;
+  const customCred = credTypeCustom.value.trim();
+  const token = document.getElementById('appToken').value.trim();
+  const delay = parseInt(document.getElementById('delayMs').value, 10);
+
+  let counts = { matched: 0, multiple: 0, none: 0, error: 0 };
+  let rowNum = 0;
+
+  for (const row of parsedRows) {
+    rowNum++;
+    progressBar.style.width = `${Math.round((rowNum / parsedRows.length) * 100)}%`;
+    progressLabel.textContent = `Looking up ${rowNum} of ${parsedRows.length}: ${row.first} ${row.last}`;
+
+    let matches = [];
+    let errMsg = '';
+    try {
+      matches = await lookupOne(row, defaultCred, customCred, token);
+    } catch (err) {
+      errMsg = err.message || 'Request failed';
+    }
+
+    if (errMsg) {
+      counts.error++;
+      addResultRow(rowNum, row, 'error', null);
+      flatResults.push(flatten(rowNum, row, 'Error', null, errMsg));
+    } else if (matches.length === 0) {
+      counts.none++;
+      addResultRow(rowNum, row, 'none', null);
+      flatResults.push(flatten(rowNum, row, 'No Match', null, ''));
+    } else if (matches.length === 1) {
+      counts.matched++;
+      addResultRow(rowNum, row, 'matched', matches, 0);
+      flatResults.push(flatten(rowNum, row, 'Matched', matches[0], ''));
+    } else {
+      counts.multiple++;
+      matches.forEach((m, i) => {
+        addResultRow(rowNum, row, 'multiple', matches, i);
+        flatResults.push(flatten(rowNum, row, 'Multiple Matches', m, ''));
+      });
+    }
+
+    updateSummary(counts, rowNum);
+    if (rowNum < parsedRows.length) await sleep(delay);
+  }
+
+  progressLabel.textContent = `Done. Processed ${parsedRows.length} row(s).`;
+  resultCountLabel.textContent = `${flatResults.length} result row(s) — ${counts.matched} matched, ${counts.multiple} flagged (multiple), ${counts.none} no match, ${counts.error} errors.`;
+  runBtn.disabled = false;
+});
+
+function updateSummary(counts, processed) {
+  summaryStrip.innerHTML = `
+    <span class="chip">Processed <b>${processed}</b> / ${parsedRows.length}</span>
+    <span class="chip matched">Matched <b>${counts.matched}</b></span>
+    <span class="chip multiple">Multiple <b>${counts.multiple}</b></span>
+    <span class="chip none">No match <b>${counts.none}</b></span>
+    <span class="chip error">Errors <b>${counts.error}</b></span>
+  `;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  // Socrata dates typically like 2025-05-15T00:00:00.000
+  const s = String(d).split('T')[0];
+  return s;
+}
+
+function addResultRow(rowNum, row, flagClass, matches, idx) {
+  const tr = document.createElement('tr');
+  if (flagClass === 'multiple') tr.classList.add('grp');
+
+  const flagLabel = {matched:'Matched', multiple:'Multiple', none:'No Match', error:'Error'}[flagClass];
+  const m = (matches && matches[idx]) ? matches[idx] : null;
+
+  const nameCell = idx === 0 || flagClass !== 'multiple'
+    ? `${escapeHtml(row.first)} ${escapeHtml(row.last)}${row.birth ? ` <span class="muted">(${escapeHtml(row.birth)})</span>` : ''}`
+    : `<span class="muted">&#8618; same person</span>`;
+
+  tr.innerHTML = `
+    <td>${rowNum}</td>
+    <td>${nameCell}</td>
+    <td><span class="flag ${flagClass}">${flagLabel}</span></td>
+    <td class="credno">${m ? escapeHtml(m.credentialnumber || '') : '&mdash;'}</td>
+    <td>${m ? escapeHtml(m.credentialtype || '') : '&mdash;'}</td>
+    <td class="${m && String(m.status).toLowerCase().includes('active') ? 'status-active' : 'status-other'}">${m ? escapeHtml(m.status || '') : '&mdash;'}</td>
+    <td>${m ? escapeHtml(m.birthyear || '') : '&mdash;'}</td>
+    <td>${m ? fmtDate(m.expirationdate) : '&mdash;'}</td>
+    <td>${m ? escapeHtml(m.actiontaken || '') : '&mdash;'}</td>
+  `;
+  resultsBody.appendChild(tr);
+}
+
+function flatten(rowNum, row, flag, m, errMsg) {
+  return {
+    'Row': rowNum,
+    'Input First Name': row.first,
+    'Input Last Name': row.last,
+    'Input Birth Year': row.birth,
+    'Flag': flag,
+    'Credential Number': m ? (m.credentialnumber || '') : '',
+    'Credential Type': m ? (m.credentialtype || '') : '',
+    'Status': m ? (m.status || '') : '',
+    'Matched Birth Year': m ? (m.birthyear || '') : '',
+    'First Issue Date': m ? fmtDate(m.firstissuedate) : '',
+    'Expiration Date': m ? fmtDate(m.expirationdate) : '',
+    'Action Taken': m ? (m.actiontaken || '') : '',
+    'Error': errMsg || '',
+  };
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------- Export ----------
+document.getElementById('exportBtn').addEventListener('click', () => {
+  if (!flatResults.length) return;
+  const ws = XLSX.utils.json_to_sheet(flatResults);
+  ws['!cols'] = [
+    {wch:5},{wch:14},{wch:14},{wch:11},{wch:16},
+    {wch:20},{wch:26},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},{wch:24}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Results');
+  const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  XLSX.writeFile(wb, `credential_lookup_results_${ts}.xlsx`);
+});
+</script>
+</body>
+</html>
