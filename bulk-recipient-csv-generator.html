@@ -265,31 +265,36 @@
 
         workbook.SheetNames.forEach((sheetName) => {
           const worksheet = workbook.Sheets[sheetName];
-          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
           const nameEmailPairs = [];
-          // Row 1 (index 0) is the header row — skip it.
           const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
           const HAS_LETTER_OR_DIGIT = /[a-zA-Z0-9]/;
 
-          for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            if (!row) continue;
-            const name = row[1] !== undefined ? String(row[1]).trim() : '';   // Column B
-            const text = row[2] !== undefined ? String(row[2]).trim() : '';   // Column C
-            const email = row[3] !== undefined ? String(row[3]).trim() : '';  // Column D
+          if (worksheet['!ref']) {
+            const range = XLSX.utils.decode_range(worksheet['!ref']);
 
-            // A row only counts as a real recipient if it has an actual name
-            // or a properly-formed email. This filters out leftover
-            // formulas/formatting below the real data (e.g. a fill-down
-            // formula like =B2&"@domain.org" that still evaluates to a
-            // stray "@domain.org" on blank rows), which would otherwise
-            // get counted and inflate the header count past your real list.
-            const hasRealName = name !== '' && HAS_LETTER_OR_DIGIT.test(name);
-            const hasRealEmail = email !== '' && EMAIL_PATTERN.test(email);
+            // Row range.s.r (first row in the used range) is the header row — skip it.
+            for (let r = range.s.r + 1; r <= range.e.r; r++) {
+              const nameCell = worksheet[XLSX.utils.encode_cell({ r, c: 1 })];  // Column B
+              const textCell = worksheet[XLSX.utils.encode_cell({ r, c: 2 })];  // Column C
+              const emailCell = worksheet[XLSX.utils.encode_cell({ r, c: 3 })]; // Column D
 
-            if (hasRealName || hasRealEmail) {
-              nameEmailPairs.push({ name, email, text });
+              const name = nameCell !== undefined ? String(nameCell.v).trim() : '';
+              const text = textCell !== undefined ? String(textCell.v).trim() : '';
+              const email = emailCell !== undefined ? String(emailCell.v).trim() : '';
+
+              // A row only counts as a real recipient if it has an actual name
+              // or a properly-formed email. This filters out leftover
+              // formulas/formatting below the real data (e.g. a fill-down
+              // formula like =B2&"@domain.org" that still evaluates to a
+              // stray "@domain.org" on blank rows), which would otherwise
+              // get counted and inflate the header count past your real list.
+              const hasRealName = name !== '' && HAS_LETTER_OR_DIGIT.test(name);
+              const hasRealEmail = email !== '' && EMAIL_PATTERN.test(email);
+
+              if (hasRealName || hasRealEmail) {
+                nameEmailPairs.push({ name, email, text });
+              }
             }
           }
 
